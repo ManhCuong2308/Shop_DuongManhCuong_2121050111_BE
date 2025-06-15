@@ -1,5 +1,5 @@
-import Order from '../models/Order.js';
-import { v4 as uuidv4 } from 'uuid';
+import Order from "../models/Order.js";
+import { v4 as uuidv4 } from "uuid";
 
 // @desc    Create new order
 // @route   POST /api/orders
@@ -16,7 +16,7 @@ export const createOrder = async (req, res) => {
     } = req.body;
 
     if (orderItems && orderItems.length === 0) {
-      res.status(400).json({ message: 'No order items' });
+      res.status(400).json({ message: "No order items" });
       return;
     }
 
@@ -44,12 +44,15 @@ export const createOrder = async (req, res) => {
 // @access  Private
 export const getOrderById = async (req, res) => {
   try {
-    const order = await Order.findById(req.params.id).populate('user', 'name email');
+    const order = await Order.findById(req.params.id).populate(
+      "user",
+      "name email"
+    );
 
     if (order) {
       res.json(order);
     } else {
-      res.status(404).json({ message: 'Order not found' });
+      res.status(404).json({ message: "Order not found" });
     }
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -76,7 +79,7 @@ export const updateOrderToPaid = async (req, res) => {
       const updatedOrder = await order.save();
       res.json(updatedOrder);
     } else {
-      res.status(404).json({ message: 'Order not found' });
+      res.status(404).json({ message: "Order not found" });
     }
   } catch (error) {
     res.status(400).json({ message: error.message });
@@ -97,7 +100,28 @@ export const updateOrderToDelivered = async (req, res) => {
       const updatedOrder = await order.save();
       res.json(updatedOrder);
     } else {
-      res.status(404).json({ message: 'Order not found' });
+      res.status(404).json({ message: "Order not found" });
+    }
+  } catch (error) {
+    res.status(400).json({ message: error.message });
+  }
+};
+
+export const updateOrderStatus = async (req, res) => {
+  try {
+    const order = await Order.findById(req.params.id);
+
+    if (order) {
+      const { status } = req.body;
+      if (!status) {
+        return res.status(400).json({ message: "Status is required" });
+      }
+      order.status = status; // Cập nhật trạng thái đơn hàng
+      order.updatedAt = Date.now(); // Cập nhật thời gian sửa đổi
+      const updatedOrder = await order.save();
+      res.json(updatedOrder);
+    } else {
+      res.status(404).json({ message: "Order not found" });
     }
   } catch (error) {
     res.status(400).json({ message: error.message });
@@ -121,53 +145,61 @@ export const getMyOrders = async (req, res) => {
 // @access  Private/Admin
 export const getOrders = async (req, res) => {
   try {
-    const orders = await Order.find({}).populate('user', 'id name');
+    const orders = await Order.find({}).populate("user", "id name");
     res.json(orders);
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
-
-
-
 };
-
 
 // @desc    Tính doanh thu tuần và chi tiết khách hàng
 // @route   GET /api/orders/revenue/week
 // @access  Private/Admin
 export const getRevenueWeek = async (req, res) => {
   try {
-    const startOfWeek = new Date();
-    startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay()); // Bắt đầu tuần (Chủ nhật)
+    // 1) Tính startOfWeek và reset về 00:00
+    const now = new Date();
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - now.getDay()); // lùi về Chủ nhật tuần này
+    startOfWeek.setHours(0, 0, 0, 0); // về đầu ngày
 
+    console.log("Start of week:", startOfWeek);
+
+    // 2) Query các đơn từ startOfWeek trở đi
     const weeklyOrders = await Order.find({
       createdAt: { $gte: startOfWeek },
-    }).populate('user', 'name email'); // Lấy thông tin khách hàng (name, email)
+    }).populate("user", "name email address");
 
-    const weeklyRevenue = weeklyOrders.reduce((acc, order) => acc + order.totalPrice, 0);
+    console.log(`Found ${weeklyOrders.length} orders this week`);
+
+    const weeklyRevenue = weeklyOrders.reduce(
+      (acc, order) => acc + order.totalPrice,
+      0
+    );
     const totalOrders = weeklyOrders.length;
-    const uniqueCustomers = new Set(weeklyOrders.map(order => order.user._id)).size;
-    const averageOrderValue = totalOrders > 0 ? (weeklyRevenue / totalOrders).toFixed(2) : 0;
+    const uniqueCustomers = new Set(
+      weeklyOrders.map((o) => o.user._id.toString())
+    ).size;
+    const averageOrderValue = totalOrders
+      ? (weeklyRevenue / totalOrders).toFixed(2)
+      : 0;
 
-    // Lấy danh sách khách hàng đã mua hàng trong tuần
-    const customerDetails = weeklyOrders.map(order => ({
-      customerId: order.user._id,
-      name: order.user.name,
-      email: order.user.email,
-      orderId: order._id,
-      totalPrice: order.totalPrice,
-      createdAt: order.createdAt,
+    const customerDetails = weeklyOrders.map((o) => ({
+      customer: o.user,
+      orderId: o._id,
+      totalPrice: o.totalPrice,
+      createdAt: o.createdAt,
     }));
 
-    res.json({
+    return res.json({
       weeklyRevenue,
       totalOrders,
       uniqueCustomers,
       averageOrderValue,
-      customerDetails, // Danh sách chi tiết khách hàng
+      customerDetails,
     });
   } catch (error) {
-    res.status(500).json({ message: error.message });
+    return res.status(500).json({ message: error.message });
   }
 };
 
@@ -181,18 +213,22 @@ export const getRevenueMonth = async (req, res) => {
 
     const monthlyOrders = await Order.find({
       createdAt: { $gte: startOfMonth },
-    }).populate('user', 'name email'); // Lấy thông tin khách hàng (name, email)
+    }).populate("user", "name email"); // Lấy thông tin khách hàng (name, email)
 
-    const monthlyRevenue = monthlyOrders.reduce((acc, order) => acc + order.totalPrice, 0);
+    const monthlyRevenue = monthlyOrders.reduce(
+      (acc, order) => acc + order.totalPrice,
+      0
+    );
     const totalOrders = monthlyOrders.length;
-    const uniqueCustomers = new Set(monthlyOrders.map(order => order.user._id)).size;
-    const averageOrderValue = totalOrders > 0 ? (monthlyRevenue / totalOrders).toFixed(2) : 0;
+    const uniqueCustomers = new Set(
+      monthlyOrders.map((order) => order.user._id)
+    ).size;
+    const averageOrderValue =
+      totalOrders > 0 ? (monthlyRevenue / totalOrders).toFixed(2) : 0;
 
     // Lấy danh sách khách hàng đã mua hàng trong tháng
-    const customerDetails = monthlyOrders.map(order => ({
-      customerId: order.user._id,
-      name: order.user.name,
-      email: order.user.email,
+    const customerDetails = monthlyOrders.map((order) => ({
+      customer: order.user,
       orderId: order._id,
       totalPrice: order.totalPrice,
       createdAt: order.createdAt,
@@ -210,7 +246,6 @@ export const getRevenueMonth = async (req, res) => {
   }
 };
 
-
 // @desc    Lấy tất cả đơn hàng của khách hàng
 // @route   GET /api/orders/customer/:customerId
 // @access  Private/Admin
@@ -223,7 +258,9 @@ export const getCustomerOrders = async (req, res) => {
     if (orders.length > 0) {
       res.json(orders);
     } else {
-      res.status(404).json({ message: 'Không tìm thấy đơn hàng của khách hàng này' });
+      res
+        .status(404)
+        .json({ message: "Không tìm thấy đơn hàng của khách hàng này" });
     }
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -242,7 +279,7 @@ export const getRevenue7Days = async (req, res) => {
     for (let i = 6; i >= 0; i--) {
       const date = new Date();
       date.setDate(today.getDate() - i);
-      last7Days.push(date.toISOString().split('T')[0]); // Lấy ngày dạng YYYY-MM-DD
+      last7Days.push(date.toISOString().split("T")[0]); // Lấy ngày dạng YYYY-MM-DD
     }
 
     const revenueData = await Promise.all(
@@ -256,7 +293,10 @@ export const getRevenue7Days = async (req, res) => {
           createdAt: { $gte: startOfDay, $lte: endOfDay },
         });
 
-        const dailyRevenue = orders.reduce((acc, order) => acc + order.totalPrice, 0);
+        const dailyRevenue = orders.reduce(
+          (acc, order) => acc + order.totalPrice,
+          0
+        );
 
         return {
           date,

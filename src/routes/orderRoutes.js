@@ -10,6 +10,7 @@ import {
   getRevenueWeek,
   getRevenueMonth,
   getRevenue7Days,
+  updateOrderStatus,
 } from '../controllers/orderController.js';
 
 const router = express.Router();
@@ -20,6 +21,7 @@ router.get('/myorders', getMyOrders);
 router.get('/:id', getOrderById);
 router.put('/:id/pay', updateOrderToPaid);
 router.put('/:id/deliver', updateOrderToDelivered);
+router.put('/:id/status', updateOrderStatus);
 
 router.get('/revenue/week', getRevenueWeek); // Route doanh thu tuần
 router.get('/revenue/month', getRevenueMonth); // Route doanh thu tháng
