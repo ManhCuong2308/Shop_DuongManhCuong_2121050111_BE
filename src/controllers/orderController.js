@@ -1,4 +1,5 @@
 import Order from '../models/Order.js';
+import { v4 as uuidv4 } from 'uuid';
 
 // @desc    Create new order
 // @route   POST /api/orders
@@ -20,7 +21,9 @@ export const createOrder = async (req, res) => {
     }
 
     const order = new Order({
-      user: req.user._id,
+      // user: req.user._id,
+      orderId: uuidv4(),
+      user: "684d2267fd52435d7587d730",
       orderItems,
       shippingAddress,
       paymentMethod,
@@ -123,4 +126,147 @@ export const getOrders = async (req, res) => {
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
-}; 
+
+
+
+};
+
+
+// @desc    Tính doanh thu tuần và chi tiết khách hàng
+// @route   GET /api/orders/revenue/week
+// @access  Private/Admin
+export const getRevenueWeek = async (req, res) => {
+  try {
+    const startOfWeek = new Date();
+    startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay()); // Bắt đầu tuần (Chủ nhật)
+
+    const weeklyOrders = await Order.find({
+      createdAt: { $gte: startOfWeek },
+    }).populate('user', 'name email'); // Lấy thông tin khách hàng (name, email)
+
+    const weeklyRevenue = weeklyOrders.reduce((acc, order) => acc + order.totalPrice, 0);
+    const totalOrders = weeklyOrders.length;
+    const uniqueCustomers = new Set(weeklyOrders.map(order => order.user._id)).size;
+    const averageOrderValue = totalOrders > 0 ? (weeklyRevenue / totalOrders).toFixed(2) : 0;
+
+    // Lấy danh sách khách hàng đã mua hàng trong tuần
+    const customerDetails = weeklyOrders.map(order => ({
+      customerId: order.user._id,
+      name: order.user.name,
+      email: order.user.email,
+      orderId: order._id,
+      totalPrice: order.totalPrice,
+      createdAt: order.createdAt,
+    }));
+
+    res.json({
+      weeklyRevenue,
+      totalOrders,
+      uniqueCustomers,
+      averageOrderValue,
+      customerDetails, // Danh sách chi tiết khách hàng
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Tính doanh thu tháng và chi tiết khách hàng
+// @route   GET /api/orders/revenue/month
+// @access  Private/Admin
+export const getRevenueMonth = async (req, res) => {
+  try {
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1); // Bắt đầu tháng
+
+    const monthlyOrders = await Order.find({
+      createdAt: { $gte: startOfMonth },
+    }).populate('user', 'name email'); // Lấy thông tin khách hàng (name, email)
+
+    const monthlyRevenue = monthlyOrders.reduce((acc, order) => acc + order.totalPrice, 0);
+    const totalOrders = monthlyOrders.length;
+    const uniqueCustomers = new Set(monthlyOrders.map(order => order.user._id)).size;
+    const averageOrderValue = totalOrders > 0 ? (monthlyRevenue / totalOrders).toFixed(2) : 0;
+
+    // Lấy danh sách khách hàng đã mua hàng trong tháng
+    const customerDetails = monthlyOrders.map(order => ({
+      customerId: order.user._id,
+      name: order.user.name,
+      email: order.user.email,
+      orderId: order._id,
+      totalPrice: order.totalPrice,
+      createdAt: order.createdAt,
+    }));
+
+    res.json({
+      monthlyRevenue,
+      totalOrders,
+      uniqueCustomers,
+      averageOrderValue,
+      customerDetails, // Danh sách chi tiết khách hàng
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+
+// @desc    Lấy tất cả đơn hàng của khách hàng
+// @route   GET /api/orders/customer/:customerId
+// @access  Private/Admin
+export const getCustomerOrders = async (req, res) => {
+  try {
+    const customerId = req.params.customerId;
+
+    const orders = await Order.find({ user: customerId });
+
+    if (orders.length > 0) {
+      res.json(orders);
+    } else {
+      res.status(404).json({ message: 'Không tìm thấy đơn hàng của khách hàng này' });
+    }
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Tính doanh thu 7 ngày qua
+// @route   GET /api/orders/revenue/7days
+// @access  Private/Admin
+export const getRevenue7Days = async (req, res) => {
+  try {
+    const today = new Date();
+    const last7Days = [];
+
+    // Tạo danh sách 7 ngày qua
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date();
+      date.setDate(today.getDate() - i);
+      last7Days.push(date.toISOString().split('T')[0]); // Lấy ngày dạng YYYY-MM-DD
+    }
+
+    const revenueData = await Promise.all(
+      last7Days.map(async (date) => {
+        const startOfDay = new Date(date);
+        startOfDay.setHours(0, 0, 0, 0); // Bắt đầu ngày
+        const endOfDay = new Date(date);
+        endOfDay.setHours(23, 59, 59, 999); // Kết thúc ngày
+
+        const orders = await Order.find({
+          createdAt: { $gte: startOfDay, $lte: endOfDay },
+        });
+
+        const dailyRevenue = orders.reduce((acc, order) => acc + order.totalPrice, 0);
+
+        return {
+          date,
+          revenue: dailyRevenue,
+        };
+      })
+    );
+
+    res.json(revenueData);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
